@@ -17,13 +17,13 @@ pub fn main() !void {
     try sp.appendSlice("test");
 
     const s = val.Value.fromNative(sp);
-    try stdout.print("{s}\n", .{(try s.to_native_cc(val.Type.String)).items});
+    try stdout.print("{s}\n", .{(try s.toNativeChecked(val.Type.String)).items});
 
     const si = val.Value.fromNative(@as(val.Type.SInt, 100));
-    try stdout.print("{}\n", .{try si.to_native_cc(val.Type.SInt)});
+    try stdout.print("{}\n", .{try si.toNativeChecked(val.Type.SInt)});
 
     const sf = val.Value.fromNative(@as(val.Type.Float, 1.1));
-    try stdout.print("{}\n", .{try sf.to_native_cc(val.Type.Float)});
+    try stdout.print("{}\n", .{try sf.toNativeChecked(val.Type.Float)});
 
     var e = instr.Encoder.init(std.heap.page_allocator);
     try e.encode(instr.Instruction.Push);
