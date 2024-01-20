@@ -7,10 +7,16 @@ pub fn main() !void {
     const stdout = std.io.getStdIn().writer();
 
     const al = std.heap.page_allocator;
+
     const sp: val.Type.String = try al.create(std.ArrayList(u8));
+    defer al.destroy(sp);
+
     sp.* = std.ArrayList(u8).init(al);
+    defer sp.deinit();
+
     try sp.appendSlice("test");
-    var s = val.Value.from_native(sp);
+
+    const s = val.Value.from_native(sp);
     try stdout.print("{s}\n", .{(try s.to_native_cc(val.Type.String)).items});
 
     const si = val.Value.from_native(@as(val.Type.SInt, 100));
@@ -33,9 +39,10 @@ pub fn main() !void {
     try e.encode(instr.Instruction.Return);
     try e.encode(true);
 
-    var instrs = try e.to_owned_slice();
+    const instrs = try e.to_owned_slice();
+    defer al.free(instrs);
 
-    var disasm = instr.Disassembler.init(instrs);
+    const disasm = instr.Disassembler.init(instrs);
 
     try stdout.print("Disassembly:\n{}", .{disasm});
 }
