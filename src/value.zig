@@ -1,5 +1,7 @@
 const std = @import("std");
 const fib = @import("fiber");
+const instr = @import("instruction");
+const Code = instr.Code;
 const Fiber = fib.Fiber;
 
 pub const Tag = enum(u16) {
@@ -89,6 +91,7 @@ pub const Type = struct {
     pub const Float = f32;
     pub const SInt = i32;
     pub const UInt = u32;
+    pub const Function = *const FunctionBody;
     pub const String = *std.ArrayList(u8);
     pub const Array = *std.ArrayList(Value);
     pub const Map = *std.AutoHashMap(Value, Value);
@@ -98,11 +101,16 @@ pub const Type = struct {
         _,
     };
 
-    pub const Function = struct {
-
+    pub const FunctionBody = struct {
+        code: Code,
+        num_locals: u8,
     };
 
-    pub const ForeignFunction = fn (fiber: *Fiber, args: []Value) Value;
+    pub const ForeignFunction = *const fn (fiber: *Fiber, args: []Value) Value;
+
+    pub fn underlying(comptime T: type) type {
+        return @typeInfo(T).Pointer.child;
+    }
 
     pub fn from_tag(comptime tag: Tag) type {
         switch (tag) {
@@ -195,12 +203,33 @@ pub const Value = enum(ValueRepr) {
         if (self.isType(T)) {
             return self.toNativeUnchecked(T);
         } else {
-            // try std.io.getStdErr().writer().print("ValueError: expected type {}, got {}\n", .{T, try Tag.decode(@intFromEnum(self))});
+            std.debug.print("ValueError: expected type {}, got {}\n", .{T, try Tag.decode(@intFromEnum(self))});
             return ValueError.TypeError;
         }
     }
 
     pub fn toNativeUnchecked(self: Self, comptime T: type) T {
         return Type.decode(T, @intFromEnum(self) & Self.DataMask);
+    }
+
+    pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = options;
+        _ = fmt;
+        switch (Tag.decodeBits(@intFromEnum(self))) {
+            @intFromEnum(Tag.Nil) => try writer.print("nil", .{}),
+            @intFromEnum(Tag.Pointer) => try writer.print("@{}", .{@intFromPtr(self.toNativeUnchecked(Type.Pointer))}),
+            @intFromEnum(Tag.Bool) => try writer.print("{}", .{self.toNativeUnchecked(Type.Bool)}),
+            @intFromEnum(Tag.Float) => try writer.print("{}", .{self.toNativeUnchecked(Type.Float)}),
+            @intFromEnum(Tag.SInt) => try writer.print("{}", .{self.toNativeUnchecked(Type.SInt)}),
+            @intFromEnum(Tag.UInt) => try writer.print("{}", .{self.toNativeUnchecked(Type.UInt)}),
+            @intFromEnum(Tag.String) => try writer.print("{}", .{self.toNativeUnchecked(Type.String)}),
+            @intFromEnum(Tag.Array) => try writer.print("{}", .{self.toNativeUnchecked(Type.Array)}),
+            @intFromEnum(Tag.Map) => try writer.print("{}", .{self.toNativeUnchecked(Type.Map)}),
+            @intFromEnum(Tag.Set) => try writer.print("{}", .{self.toNativeUnchecked(Type.Set)}),
+            @intFromEnum(Tag.Symbol) => try writer.print("{}", .{self.toNativeUnchecked(Type.Symbol)}),
+            @intFromEnum(Tag.Function) => try writer.print("{}", .{self.toNativeUnchecked(Type.Function)}),
+            @intFromEnum(Tag.ForeignFunction) => try writer.print("{}", .{self.toNativeUnchecked(Type.ForeignFunction)}),
+            else => {return error.Unexpected;},
+        }
     }
 };

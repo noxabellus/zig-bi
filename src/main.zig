@@ -1,29 +1,73 @@
 const std = @import("std");
 const instr = @import("instruction");
 const val = @import("value");
+const Type = val.Type;
+const Value = val.Value;
 const fib = @import("fiber");
+const Fiber = fib.Fiber;
+
+pub fn tryCreateObj(al: std.mem.Allocator, comptime T: type) !*T {
+    const obj = try al.create(T);
+    obj.* = try T.init(al);
+    return obj;
+}
+
+pub fn createObj(al: std.mem.Allocator, comptime T: type) !*T {
+    const obj = try al.create(T);
+    obj.* = T.init(al);
+    return obj;
+}
+
+pub fn destroyObj(obj: anytype) void {
+    const al = obj.allocator;
+    obj.deinit();
+    al.destroy(obj);
+}
 
 pub fn main() !void {
+    const al = std.heap.page_allocator;
     const stdout = std.io.getStdIn().writer();
 
-    const al = std.heap.page_allocator;
+    const fi = try tryCreateObj(al, Fiber);
+    defer destroyObj(fi);
 
-    const sp: val.Type.String = try al.create(std.ArrayList(u8));
-    defer al.destroy(sp);
+    try fi.push(Value.fromNative(@as(Type.SInt, 1)), "main.push");
+    try fi.push(Value.fromNative(@as(Type.SInt, 2)), "main.push");
+    try fi.push(Value.fromNative(@as(Type.SInt, 3)), "main.push");
+    try fi.push(Value.fromNative(@as(Type.SInt, 4)), "main.push");
+    try fi.push(Value.fromNative(@as(Type.SInt, 5)), "main.push");
+    try fi.dumpStack(stdout);
+    try fi.duplicate(1, 2, "main.duplicate");
+    try fi.dumpStack(stdout);
+    try fi.swap(2, 2, "main.swap");
+    try fi.dumpStack(stdout);
+    try fi.pop(2, "main.pop");
+    try fi.dumpStack(stdout);
 
-    sp.* = std.ArrayList(u8).init(al);
-    defer sp.deinit();
+    try fi.push(Value.fromNative(&Type.FunctionBody {
+        .code = instr.Code {
+            .allocator = null,
+            .instrs = &[0]u8{},
+        },
+        .num_locals = 0
+    }), "main.push");
+    try fi.push(Value.fromNative(@as(Type.SInt, 1)), "main.push");
+    try fi.pushFrame(1, "main.pushFrame");
+    _ = try fi.popFrame();
+
+    const sp = try createObj(al, Type.underlying(Type.String));
+    defer destroyObj(sp);
 
     try sp.appendSlice("test");
 
-    const s = val.Value.fromNative(sp);
-    try stdout.print("{s}\n", .{(try s.toNativeChecked(val.Type.String)).items});
+    const vs = Value.fromNative(sp);
+    try stdout.print("{s}\n", .{(try vs.toNativeChecked(Type.String)).items});
 
-    const si = val.Value.fromNative(@as(val.Type.SInt, 100));
-    try stdout.print("{}\n", .{try si.toNativeChecked(val.Type.SInt)});
+    const vi = Value.fromNative(@as(Type.SInt, 100));
+    try stdout.print("{}\n", .{try vi.toNativeChecked(Type.SInt)});
 
-    const sf = val.Value.fromNative(@as(val.Type.Float, 1.1));
-    try stdout.print("{}\n", .{try sf.toNativeChecked(val.Type.Float)});
+    const vf = Value.fromNative(@as(Type.Float, 1.1));
+    try stdout.print("{}\n", .{try vf.toNativeChecked(Type.Float)});
 
     var e = instr.Encoder.init(std.heap.page_allocator);
     try e.encode(instr.Instruction.Push);
@@ -38,10 +82,9 @@ pub fn main() !void {
     try e.encode(instr.Instruction.Return);
     try e.encode(true);
 
-    const instrs = try e.toOwnedSlice();
-    defer al.free(instrs);
+    const code = try e.finalize();
+    defer code.deinit();
 
-    const disasm = instr.Disassembler.init(instrs);
-
+    const disasm = instr.Disassembler.init(code.instrs);
     try stdout.print("Disassembly:\n{}", .{disasm});
 }

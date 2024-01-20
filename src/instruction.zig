@@ -1,4 +1,20 @@
 pub const std = @import("std");
+pub const val = @import("value");
+
+pub const Code = struct {
+    allocator: ?std.mem.Allocator,
+    instrs: []const u8,
+
+    pub fn init(allocator: std.mem.Allocator, instrs: []const u8) Code {
+        return Code { .allocator = allocator, .instrs = instrs };
+    }
+
+    pub fn deinit(self: Code) void {
+        if (self.allocator) |al| {
+            al.free(self.instrs);
+        }
+    }
+};
 
 pub const Instruction = enum(u8) {
     Unreachable = 0xFF,
@@ -23,7 +39,6 @@ pub const Instruction = enum(u8) {
     Add, Sub, Mul, Div, Mod, Pow, Abs, Neg,
     LAnd, LOr, LNot,
     BAnd, BOr, BXor, BNot, LShift, RShift,
-
 
 
     pub fn format(self: Instruction, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
@@ -132,6 +147,10 @@ pub const Encoder = struct {
     pub fn toOwnedSlice(self: Encoder) ![]u8 {
         var out = self;
         return out.data.toOwnedSlice();
+    }
+
+    pub fn finalize(self: Encoder) !Code {
+        return Code.init(self.data.allocator, try self.toOwnedSlice());
     }
 
     pub fn pushInt(self: *Encoder, i: anytype) !void {

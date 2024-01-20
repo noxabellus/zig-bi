@@ -1,15 +1,10 @@
 const Builder = @import("std").build.Builder;
 
-pub fn build(b: *Builder) void {
+pub fn build(b: *Builder) !void {
     const exe =
         b.addExecutable(.{
             .name = "main",
             .root_source_file = .{ .path = "src/main.zig" },
-        });
-
-    const instruction =
-        b.addModule("instruction", .{
-            .source_file = .{ .path = "src/instruction.zig" }
         });
 
     const fiber =
@@ -25,7 +20,19 @@ pub fn build(b: *Builder) void {
             },
         });
 
-    
+    const instruction =
+        b.addModule("instruction", .{
+            .source_file = .{ .path = "src/instruction.zig" },
+            .dependencies = &.{
+                .{ .name = "value", .module = value },
+            },
+        });
+
+    try value.dependencies.put("instruction", instruction);
+
+    try fiber.dependencies.put("instruction", instruction);
+    try fiber.dependencies.put("value", value);
+
     exe.addModule("instruction", instruction);
     exe.addModule("fiber", fiber);
     exe.addModule("value", value);
