@@ -26,12 +26,12 @@ pub const Tag = enum(u16) {
         return @as(u64, @intFromEnum(self)) << 48;
     }
 
-    pub fn decode_bits(bits: u64) u16 {
+    pub fn decodeBits(bits: u64) u16 {
         return @intCast(bits >> 48);
     }
 
     pub fn decode(bits: u64) !Self {
-        switch (Self.decode_bits(bits)) {
+        switch (Self.decodeBits(bits)) {
             @intFromEnum(Tag.Nil) => return Tag.Nil,
             @intFromEnum(Tag.Pointer) => return Tag.Pointer,
             @intFromEnum(Tag.Bool) => return Tag.Bool,
@@ -52,7 +52,7 @@ pub const Tag = enum(u16) {
         }
     }
 
-    pub fn from_type(comptime T: type) Self {
+    pub fn fromType(comptime T: type) Self {
         switch (T) {
             Type.Nil => return Tag.Nil,
             Type.Pointer => return Tag.Pointer,
@@ -173,34 +173,34 @@ pub const Value = enum(ValueRepr) {
     pub const DataMask: ValueRepr = 0b0000000000000000111111111111111111111111111111111111111111111111;
 
 
-    pub fn is_tag(self: Self, tag: Tag) bool {
-        return Tag.decode_bits(@intFromEnum(self)) == @intFromEnum(tag);
+    pub fn isTag(self: Self, tag: Tag) bool {
+        return Tag.decodeBits(@intFromEnum(self)) == @intFromEnum(tag);
     }
 
-    pub fn is_type(self: Self, comptime T: type) bool {
-        return self.is_tag(Tag.from_type(T));
-    }
-
-
-    pub fn is_nil(self: Self) bool {
-        return self.is_tag(.Nil);
+    pub fn isType(self: Self, comptime T: type) bool {
+        return self.isTag(Tag.fromType(T));
     }
 
 
-    pub fn from_native(v: anytype) Self {
-        return @enumFromInt(Tag.from_type(@TypeOf(v)).encoded() | Type.encode(v));
+    pub fn isNil(self: Self) bool {
+        return self.isTag(.Nil);
     }
 
-    pub fn to_native_cc(self: Self, comptime T: type) !T {
-        if (self.is_type(T)) {
-            return self.to_native_uc(T);
+
+    pub fn fromNative(v: anytype) Self {
+        return @enumFromInt(Tag.fromType(@TypeOf(v)).encoded() | Type.encode(v));
+    }
+
+    pub fn toNativeChecked(self: Self, comptime T: type) !T {
+        if (self.isType(T)) {
+            return self.toNativeUnchecked(T);
         } else {
             // try std.io.getStdErr().writer().print("ValueError: expected type {}, got {}\n", .{T, try Tag.decode(@intFromEnum(self))});
             return ValueError.TypeError;
         }
     }
 
-    pub fn to_native_uc(self: Self, comptime T: type) T {
+    pub fn toNativeUnchecked(self: Self, comptime T: type) T {
         return Type.decode(T, @intFromEnum(self) & Self.DataMask);
     }
 };

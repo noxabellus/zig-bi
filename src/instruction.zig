@@ -33,7 +33,7 @@ pub const Instruction = enum(u8) {
     }
 
     pub fn encode(self: Instruction, encoder: *Encoder) !void {
-        return encoder.push_int(@intFromEnum(self));
+        return encoder.pushInt(@intFromEnum(self));
     }
 
     pub fn disasm(self: Instruction, disassembler: *const Disassembler, ip: *u64, writer: anytype) !void {
@@ -48,62 +48,62 @@ pub const Instruction = enum(u8) {
             => {},
 
             .Push => {
-                const imm = std.mem.readIntSliceLittle(u64, try disassembler.read_bytes(ip, 8));
+                const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
                 try writer.print(" {}", .{imm});
             },
 
             .Pop => {
-                try writer.print(" {}", .{try disassembler.read_byte(ip)});
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
             },
 
             .Swap => {
-                try writer.print(" {} {}", .{try disassembler.read_byte(ip), try disassembler.read_byte(ip)});
+                try writer.print(" {} {}", .{try disassembler.readByte(ip), try disassembler.readByte(ip)});
             },
 
             .Duplicate => {
-                try writer.print(" {} {}", .{try disassembler.read_byte(ip), try disassembler.read_byte(ip)});
+                try writer.print(" {} {}", .{try disassembler.readByte(ip), try disassembler.readByte(ip)});
             },
 
             .GetLocal => {
-                try writer.print(" {}", .{try disassembler.read_byte(ip)});
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
             },
 
             .SetLocal => {
-                try writer.print(" {}", .{try disassembler.read_byte(ip)});
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
             },
 
             .HandlerPush => {
-                const imm = std.mem.readIntSliceLittle(u64, try disassembler.read_bytes(ip, 8));
+                const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
                 try writer.print(" {}", .{imm});
             },
 
             .HandlerPop => {
-                try writer.print(" {}", .{try disassembler.read_byte(ip)});
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
             },
 
             .Call => {
-                try writer.print(" {}", .{try disassembler.read_byte(ip)});
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
             },
 
             .Return => {
-                try writer.print("{s}", .{if (try disassembler.read_byte(ip) != 0) "+" else "-"});
+                try writer.print("{s}", .{if (try disassembler.readByte(ip) != 0) "+" else "-"});
             },
 
             .Prompt => {
-                try writer.print(" {}", .{try disassembler.read_byte(ip)});
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
             },
 
             .Continue => {
-                try writer.print("{s}", .{if (try disassembler.read_byte(ip) != 0) "+" else "-"});
+                try writer.print("{s}", .{if (try disassembler.readByte(ip) != 0) "+" else "-"});
             },
 
             .Jump => {
-                const imm = std.mem.readIntSliceLittle(u64, try disassembler.read_bytes(ip, 8));
+                const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
                 try writer.print(" {}", .{imm});
             },
 
             .JumpIf => {
-                const imm = std.mem.readIntSliceLittle(u64, try disassembler.read_bytes(ip, 8));
+                const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
                 try writer.print(" {}", .{imm});
             },
         }
@@ -129,12 +129,12 @@ pub const Encoder = struct {
         self.data.deinit();
     }
 
-    pub fn to_owned_slice(self: Encoder) ![]u8 {
+    pub fn toOwnedSlice(self: Encoder) ![]u8 {
         var out = self;
         return out.data.toOwnedSlice();
     }
 
-    pub fn push_int(self: *Encoder, i: anytype) !void {
+    pub fn pushInt(self: *Encoder, i: anytype) !void {
         try self.data.writer().writeIntLittle(@TypeOf(i), i);
     }
 
@@ -143,11 +143,11 @@ pub const Encoder = struct {
             try arg.encode(self);
         } else {
             try switch (@TypeOf(arg)) {
-                bool => self.push_int(@intFromBool(arg)),
+                bool => self.pushInt(@intFromBool(arg)),
 
                 u8, u16, u32, u64,
                 i8, i16, i32, i64,
-                => self.push_int(arg),
+                => self.pushInt(arg),
 
                 else => return EncodeError.TypeError,
             };
@@ -164,27 +164,27 @@ pub const Disassembler = struct {
         };
     }
 
-    pub fn read_byte(self: *const Disassembler, ip: *u64) !u8 {
+    pub fn readByte(self: *const Disassembler, ip: *u64) !u8 {
         var byte = self.instrs[ip.*];
         ip.* += 1;
         return byte;
     }
 
-    pub fn read_bytes(self: *const Disassembler, ip: *u64, len: usize) ![]const u8 {
+    pub fn readBytes(self: *const Disassembler, ip: *u64, len: usize) ![]const u8 {
         var bytes = self.instrs[ip.*..ip.* + len];
         ip.* += len;
         return bytes;
     }
 
-    pub fn disasm_instr(self: *const Disassembler, ip: *u64, writer: anytype) !void {
-        var instr: Instruction = @enumFromInt(try self.read_byte(ip));
+    pub fn disasmInstr(self: *const Disassembler, ip: *u64, writer: anytype) !void {
+        var instr: Instruction = @enumFromInt(try self.readByte(ip));
         return instr.disasm(self, ip, writer);
     }
 
     pub fn disasm(self: *const Disassembler, writer: anytype) !void {
         var ip: u64 = 0;
         while (ip < self.instrs.len) {
-            try self.disasm_instr(&ip, writer);
+            try self.disasmInstr(&ip, writer);
         }
     }
 

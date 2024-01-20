@@ -16,17 +16,16 @@ pub fn main() !void {
 
     try sp.appendSlice("test");
 
-    const s = val.Value.from_native(sp);
+    const s = val.Value.fromNative(sp);
     try stdout.print("{s}\n", .{(try s.to_native_cc(val.Type.String)).items});
 
-    const si = val.Value.from_native(@as(val.Type.SInt, 100));
+    const si = val.Value.fromNative(@as(val.Type.SInt, 100));
     try stdout.print("{}\n", .{try si.to_native_cc(val.Type.SInt)});
 
-    const sf = val.Value.from_native(@as(val.Type.Float, 1.1));
+    const sf = val.Value.fromNative(@as(val.Type.Float, 1.1));
     try stdout.print("{}\n", .{try sf.to_native_cc(val.Type.Float)});
 
     var e = instr.Encoder.init(std.heap.page_allocator);
-
     try e.encode(instr.Instruction.Push);
     try e.encode(@as(u64, 1));
     try e.encode(instr.Instruction.Push);
@@ -39,7 +38,7 @@ pub fn main() !void {
     try e.encode(instr.Instruction.Return);
     try e.encode(true);
 
-    const instrs = try e.to_owned_slice();
+    const instrs = try e.toOwnedSlice();
     defer al.free(instrs);
 
     const disasm = instr.Disassembler.init(instrs);
