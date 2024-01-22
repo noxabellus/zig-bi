@@ -1,5 +1,6 @@
-pub const std = @import("std");
-pub const val = @import("value");
+const std = @import("std");
+const m_value = @import("value");
+const Value = m_value.Value;
 
 pub const Code = struct {
     allocator: ?std.mem.Allocator,
@@ -33,8 +34,8 @@ pub const Instruction = enum(u8) {
     GetLocal,
     SetLocal,
 
-    HandlerPush,
-    HandlerPop,
+    InsertHandler,
+    RemoveHandler,
 
     Call, Return,
     Prompt, Continue,
@@ -72,69 +73,37 @@ pub const Instruction = enum(u8) {
             .BAnd, .BOr, .BXor, .BNot, .LShift, .RShift,
             => {},
 
+            .Pop,
+            .InsertHandler,
+            .RemoveHandler,
+            .GetParam,
+            .SetParam,
+            .GetLocal,
+            .SetLocal,
+            .Prompt,
+            .Call,
+            => {
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
+            },
+
             .Push => {
-                const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
+                const imm: Value = @enumFromInt(std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8)));
                 try writer.print(" {}", .{imm});
             },
 
-            .Pop => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .Swap => {
+            .Swap,
+            .Duplicate,
+            => {
                 try writer.print(" {} {}", .{try disassembler.readByte(ip), try disassembler.readByte(ip)});
             },
 
-            .Duplicate => {
-                try writer.print(" {} {}", .{try disassembler.readByte(ip), try disassembler.readByte(ip)});
-            },
+            .Return,
+            .Continue,
+            => 
+                try writer.print("{s}", .{if (try disassembler.readByte(ip) != 0) "+" else "-"})
+            ,
 
-            .GetParam => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .SetParam => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .GetLocal => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .SetLocal => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .HandlerPush => {
-                const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
-                try writer.print(" {}", .{imm});
-            },
-
-            .HandlerPop => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .Call => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .Return => {
-                try writer.print("{s}", .{if (try disassembler.readByte(ip) != 0) "+" else "-"});
-            },
-
-            .Prompt => {
-                try writer.print(" {}", .{try disassembler.readByte(ip)});
-            },
-
-            .Continue => {
-                try writer.print("{s}", .{if (try disassembler.readByte(ip) != 0) "+" else "-"});
-            },
-
-            .Jump => {
-                const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
-                try writer.print(" {}", .{imm});
-            },
-
+            .Jump,
             .JumpIf => {
                 const imm = std.mem.readIntSliceLittle(u64, try disassembler.readBytes(ip, 8));
                 try writer.print(" {}", .{imm});

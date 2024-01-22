@@ -25,6 +25,8 @@ pub const Tag = enum(u16) {
     Function,
     ForeignFunction,
 
+    Handler,
+
     pub fn encoded(self: Self) u64 {
         return @as(u64, @intFromEnum(self)) << 48;
     }
@@ -48,6 +50,7 @@ pub const Tag = enum(u16) {
             @intFromEnum(Tag.Symbol) => return Tag.Symbol,
             @intFromEnum(Tag.Function) => return Tag.Function,
             @intFromEnum(Tag.ForeignFunction) => return Tag.ForeignFunction,
+            @intFromEnum(Tag.Handler) => return Tag.Handler,
             else => {
                 // try std.io.getStdErr().writer().print("ValueError: invalid tag {}\n", .{@as(u16, @intCast(bits >> 48))});
                 return ValueError.InvalidTag;
@@ -70,6 +73,7 @@ pub const Tag = enum(u16) {
             Type.Symbol => return Tag.Symbol,
             Type.Function => return Tag.Function,
             Type.ForeignFunction => return Tag.ForeignFunction,
+            Type.Handler => return Tag.Handler,
             else => {
                 @compileLog("comptime T = ", T);
                 @compileError("invalid type for Tag.from_type");
@@ -97,6 +101,7 @@ pub const Type = struct {
     pub const Array = *std.ArrayList(Value);
     pub const Map = *std.AutoHashMap(Value, Value);
     pub const Set = *std.AutoHashMap(Value, Nil);
+    pub const Handler = *const HandlerBody;
 
     pub const Symbol = enum(u48) {
         _,
@@ -105,6 +110,11 @@ pub const Type = struct {
     pub const FunctionBody = struct {
         code: Code,
         num_locals: u8,
+    };
+
+    pub const HandlerBody = struct {
+        name: Symbol,
+        functions: Array,
     };
 
     pub const ForeignFunction = *const fn (fiber: *Fiber, args: []Value) Value;
@@ -128,6 +138,7 @@ pub const Type = struct {
             Tag.Symbol => return Type.Symbol,
             Tag.Function => return Type.Function,
             Tag.ForeignFunction => return Type.ForeignFunction,
+            Tag.Handler => return Type.Handler,
             else => @compileError("invalid tag for Type.from_tag"),
         }
     }
@@ -147,6 +158,7 @@ pub const Type = struct {
             Type.Symbol => return @intCast(@intFromEnum(v)),
             Type.Function => return @intFromPtr(v),
             Type.ForeignFunction => return @intFromPtr(v),
+            Type.Handler => return @intFromPtr(v),
             else => @compileError("invalid type for Type.encode"),
         }
     }
@@ -166,6 +178,7 @@ pub const Type = struct {
             Type.Symbol => return @enumFromInt(@as(u48, @intCast(bits))),
             Type.Function => return @ptrFromInt(bits),
             Type.ForeignFunction => return @ptrFromInt(bits),
+            Type.Handler => return @ptrFromInt(bits),
             else => @compileError("invalid type for Type.decode"),
         }
     }

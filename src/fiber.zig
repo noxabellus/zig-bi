@@ -11,11 +11,6 @@ pub const Frame = struct {
     arity: u8,
 };
 
-pub const Evidence = struct {
-    key: Type.Symbol,
-    handler: Value,
-};
-
 pub const Trap = enum(u8) {
     TypeError,
     ArityError,
@@ -40,7 +35,7 @@ pub const Fiber = struct {
     allocator: std.mem.Allocator,
     stack: std.ArrayList(Value),
     callstack: std.ArrayList(Frame),
-    evidence: std.ArrayList(Evidence),
+    evidence: std.ArrayList(Type.Handler),
     trap: ?struct{Trap, []const u8},
 
     pub fn init(allocator: std.mem.Allocator) !Self {
@@ -48,7 +43,7 @@ pub const Fiber = struct {
             .allocator = allocator,
             .stack = try std.ArrayList(Value).initCapacity(allocator, Self.StackCapacity),
             .callstack = try std.ArrayList(Frame).initCapacity(allocator, Self.CallstackCapacity),
-            .evidence = try std.ArrayList(Evidence).initCapacity(allocator, Self.EvidenceCapacity),
+            .evidence = try std.ArrayList(Type.Handler).initCapacity(allocator, Self.EvidenceCapacity),
             .trap = null,
         };
 
@@ -62,6 +57,11 @@ pub const Fiber = struct {
     }
 
     pub fn springTrap(self: *Self, trap: Trap, comptime message: []const u8) !void {
+        self.trap = .{trap, message};
+        return error.Trap;
+    }
+
+    pub fn springTrapT(self: *Self, comptime T: type, trap: Trap, comptime message: []const u8) !T {
         self.trap = .{trap, message};
         return error.Trap;
     }
@@ -186,43 +186,55 @@ pub const Fiber = struct {
         return frame;
     }
 
-    pub fn getParam(self: *Self, index: u8) !Value {
+    pub fn getParam(self: *Self, index: u8, comptime location: []const u8) !Value {
         const frame =
             if (self.currentFrame()) |frame| frame
-            else self.springTrap(.HostError, "no frame for get param");
+            else return self.springTrapT(Value, .HostError, "no frame for get param in " ++ location);
 
-        try self.assert(index < frame.arity, .LocalOutOfBounds, "get param index out of bounds");
+        try self.assert(index < frame.arity, .LocalOutOfBounds, "get param index out of bounds in " ++ location);
 
         return self.stack.items[frame.stack_base - (frame.function.num_locals + frame.arity) + index];
     }
 
-    pub fn setParam(self: *Self, index: u8, value: Value) !void {
+    pub fn setParam(self: *Self, index: u8, value: Value, comptime location: []const u8) !void {
         const frame =
             if (self.currentFrame()) |frame| frame
-            else self.springTrap(.HostError, "no frame for set param");
+            else return self.springTrap(.HostError, "no frame for set param in " ++ location);
 
-        try self.assert(index < frame.arity, .LocalOutOfBounds, "set param index out of bounds");
+        try self.assert(index < frame.arity, .LocalOutOfBounds, "set param index out of bounds in " ++ location);
 
         self.stack.items[frame.stack_base - (frame.function.num_locals + frame.arity) + index] = value;
     }
 
-    pub fn getLocal(self: *Self, index: u8) !Value {
+    pub fn getLocal(self: *Self, index: u8, comptime location: []const u8) !Value {
         const frame =
             if (self.currentFrame()) |frame| frame
-            else self.springTrap(.HostError, "no frame for get local");
+            else return self.springTrapT(Value, .HostError, "no frame for get local in " ++ location);
 
-        try self.assert(index < frame.function.num_locals, .LocalOutOfBounds, "get local index out of bounds");
+        try self.assert(index < frame.function.num_locals, .LocalOutOfBounds, "get local index out of bounds in " ++ location);
 
         return self.stack.items[frame.stack_base - frame.function.num_locals + index];
     }
 
-    pub fn setLocal(self: *Self, index: u8, value: Value) !void {
+    pub fn setLocal(self: *Self, index: u8, value: Value, comptime location: []const u8) !void {
         const frame =
             if (self.currentFrame()) |frame| frame
-            else self.springTrap(.HostError, "no frame for set local");
+            else return self.springTrap(.HostError, "no frame for set local in " ++ location);
 
-        try self.assert(index < frame.function.num_locals, .LocalOutOfBounds, "set local index out of bounds");
+        try self.assert(index < frame.function.num_locals, .LocalOutOfBounds, "set local index out of bounds in " ++ location);
 
         self.stack.items[frame.stack_base - frame.function.num_locals + index] = value;
+    }
+
+    pub fn insertHandler(self: *Self, index: u8, handler: Type.Handler, comptime location: []const u8) !void {
+        try self.assert(self.evidence.items.len < self.evidence.capacity, .StackOverflow, "evidence overflow in " ++ location);
+
+        return self.evidence.insertAssumeCapacity(index, handler);
+    }
+
+    pub fn removeHandler(self: *Self, index: u8, comptime location: []const u8) !Type.Handler {
+        try self.assert(index < self.evidence.items.len, .LocalOutOfBounds, "remove handler index out of bounds in " ++ location);
+
+        return self.evidence.orderedRemove(index);
     }
 };

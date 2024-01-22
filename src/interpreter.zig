@@ -70,7 +70,7 @@ pub inline fn step(fiber: *Fiber) !void {
         .NumParams => {
             std.debug.print("num params\n", .{});
 
-            const arity = try fiber.currentArity("num params");
+            const arity = fiber.currentArity();
 
             try fiber.push(Value.fromNative(@as(Type.UInt, @intCast(arity))), "num params");
         },
@@ -117,6 +117,31 @@ pub inline fn step(fiber: *Fiber) !void {
             const value = try fiber.pop1("set local");
 
             try fiber.setLocal(index, value, "set local");
+        },
+
+        .InsertHandler => {
+            std.debug.print("insert handler\n", .{});
+
+            const index = decoder.read(u8) catch
+                return fiber.springTrap(.InvalidBytecode, "invalid index operand for insert handler");
+
+            const value = try fiber.pop1("insert handler");
+
+            const handler = value.toNativeChecked(Type.Handler) catch
+                return fiber.springTrap(.TypeError, "insert handler expects handler value");
+
+            try fiber.insertHandler(index, handler, "insert handler");
+        },
+
+        .RemoveHandler => {
+            std.debug.print("remove handler\n", .{});
+
+            const index = decoder.read(u8) catch
+                return fiber.springTrap(.InvalidBytecode, "invalid index operand for remove handler");
+
+            const handler = try fiber.removeHandler(index, "remove handler");
+
+            try fiber.push(Value.fromNative(handler), "remove handler");
         },
 
         else => return fiber.springTrap(.InvalidBytecode, "instruction not yet implemented"),
