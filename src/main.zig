@@ -5,6 +5,7 @@ const Type = val.Type;
 const Value = val.Value;
 const fib = @import("fiber");
 const Fiber = fib.Fiber;
+const interp = @import("interpreter");
 
 pub fn tryCreateObj(al: std.mem.Allocator, comptime T: type) !*T {
     const obj = try al.create(T);
@@ -44,16 +45,7 @@ pub fn main() !void {
     try fi.pop(2, "main.pop");
     try fi.dumpStack(stdout);
 
-    try fi.push(Value.fromNative(&Type.FunctionBody {
-        .code = instr.Code {
-            .allocator = null,
-            .instrs = &[0]u8{},
-        },
-        .num_locals = 0
-    }), "main.push");
-    try fi.push(Value.fromNative(@as(Type.SInt, 1)), "main.push");
-    try fi.pushFrame(1, "main.pushFrame");
-    _ = try fi.popFrame();
+
 
     const sp = try createObj(al, Type.underlying(Type.String));
     defer destroyObj(sp);
@@ -85,6 +77,21 @@ pub fn main() !void {
     const code = try e.finalize();
     defer code.deinit();
 
-    const disasm = instr.Disassembler.init(code.instrs);
-    try stdout.print("Disassembly:\n{}", .{disasm});
+    try fi.push(Value.fromNative(&Type.FunctionBody {
+        .code = code,
+        .num_locals = 0
+    }), "main.push");
+    try fi.push(Value.fromNative(@as(Type.SInt, 1)), "main.push");
+    try fi.pushFrame(1, "main.pushFrame");
+
+    interp.step(fi) catch
+        if (fi.trap) |trap| {
+            try stdout.print("Trap {s} sprung with \"{s}\"\n", .{@tagName(trap[0]), trap[1]});
+        } else {
+            try stdout.print("Error with no trap?\n", .{});
+        };
+
+
+    // const disasm = instr.Disassembler.init(code.instrs);
+    // try stdout.print("Disassembly:\n{}", .{disasm});
 }

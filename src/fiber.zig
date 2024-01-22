@@ -23,6 +23,10 @@ pub const Trap = enum(u8) {
     StackUnderflow,
     OutOfMemory,
     HostError,
+    LocalOutOfBounds,
+    IpOutOfBounds,
+    InvalidBytecode,
+    NoFrame,
     Unreachable,
 };
 
@@ -80,6 +84,12 @@ pub const Fiber = struct {
         return self.stack.shrinkRetainingCapacity(self.stack.items.len - n);
     }
 
+    pub fn pop1(self: *Self, comptime location: []const u8) !Value {
+        try self.assert(self.stackDepth() >= 1, .StackUnderflow, "stack underflow in " ++ location);
+
+        return self.stack.pop();
+    }
+
     pub fn duplicate(self: *Self, offset: u8, count: u8, comptime location: []const u8) !void {
         try self.assert(self.stackDepth() >= offset + count, .StackUnderflow, "stack underflow in " ++ location);
         try self.assert(self.stack.items.len + count <= self.stack.capacity, .StackOverflow, "stack overflow in " ++ location);
@@ -111,11 +121,31 @@ pub const Fiber = struct {
         }
     }
 
-    pub fn stackDepth(self: *Self) u64 {
+    pub fn stackBase(self: *Self) u64 {
         if (self.currentFrame()) |frame| {
-            return self.stack.items.len - frame.stack_base;
+            return frame.stack_base;
         } else {
-            return self.stack.items.len;
+            return 0;
+        }
+    }
+
+    pub fn stackDepth(self: *Self) u64 {
+        return self.stack.items.len - self.stackBase();
+    }
+
+    pub fn localDepth(self: *Self) u64 {
+        if (self.currentFrame()) |frame| {
+            return frame.function.num_locals;
+        } else {
+            return 0;
+        }
+    }
+
+    pub fn currentArity(self: *Self) u8 {
+        if (self.currentFrame()) |frame| {
+            return frame.arity;
+        } else {
+            return 0;
         }
     }
 
@@ -126,6 +156,7 @@ pub const Fiber = struct {
     pub fn pushFrame(self: *Self, arity: u8, comptime location: []const u8) !void {
         try self.assert(self.callstack.items.len < self.callstack.capacity, .StackOverflow, "callstack overflow in " ++ location);
         try self.assert(self.stackDepth() >= arity + 1, .StackUnderflow, "stack underflow in " ++ location);
+
         const function = try self.stack.items[self.stack.items.len - (arity + 1)].toNativeChecked(Type.Function);
         try self.assert(self.stack.items.len + function.num_locals <= self.stack.capacity, .StackOverflow, "stack overflow in " ++ location);
 
@@ -153,5 +184,45 @@ pub const Fiber = struct {
         self.stack.shrinkRetainingCapacity(frame.stack_base - (frame.function.num_locals + frame.arity + 1));
 
         return frame;
+    }
+
+    pub fn getParam(self: *Self, index: u8) !Value {
+        const frame =
+            if (self.currentFrame()) |frame| frame
+            else self.springTrap(.HostError, "no frame for get param");
+
+        try self.assert(index < frame.arity, .LocalOutOfBounds, "get param index out of bounds");
+
+        return self.stack.items[frame.stack_base - (frame.function.num_locals + frame.arity) + index];
+    }
+
+    pub fn setParam(self: *Self, index: u8, value: Value) !void {
+        const frame =
+            if (self.currentFrame()) |frame| frame
+            else self.springTrap(.HostError, "no frame for set param");
+
+        try self.assert(index < frame.arity, .LocalOutOfBounds, "set param index out of bounds");
+
+        self.stack.items[frame.stack_base - (frame.function.num_locals + frame.arity) + index] = value;
+    }
+
+    pub fn getLocal(self: *Self, index: u8) !Value {
+        const frame =
+            if (self.currentFrame()) |frame| frame
+            else self.springTrap(.HostError, "no frame for get local");
+
+        try self.assert(index < frame.function.num_locals, .LocalOutOfBounds, "get local index out of bounds");
+
+        return self.stack.items[frame.stack_base - frame.function.num_locals + index];
+    }
+
+    pub fn setLocal(self: *Self, index: u8, value: Value) !void {
+        const frame =
+            if (self.currentFrame()) |frame| frame
+            else self.springTrap(.HostError, "no frame for set local");
+
+        try self.assert(index < frame.function.num_locals, .LocalOutOfBounds, "set local index out of bounds");
+
+        self.stack.items[frame.stack_base - frame.function.num_locals + index] = value;
     }
 };

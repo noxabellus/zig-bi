@@ -25,6 +25,11 @@ pub const Instruction = enum(u8) {
     Swap,
     Duplicate,
 
+    NumParams,
+
+    GetParam,
+    SetParam,
+
     GetLocal,
     SetLocal,
 
@@ -51,11 +56,16 @@ pub const Instruction = enum(u8) {
         return encoder.pushInt(@intFromEnum(self));
     }
 
+    pub fn decode(decoder: *Decoder) !Instruction {
+        return @enumFromInt(try decoder.read(u8));
+    }
+
     pub fn disasm(self: Instruction, disassembler: *const Disassembler, ip: *u64, writer: anytype) !void {
         try writer.print("{any}", .{self});
 
         switch (self) {
             .Unreachable, .NoOp,
+            .NumParams,
             .Eq, .Ne, .Lt, .Le, .Gt, .Ge,
             .Add, .Sub, .Mul, .Div, .Mod, .Pow, .Abs, .Neg,
             .LAnd, .LOr, .LNot,
@@ -77,6 +87,14 @@ pub const Instruction = enum(u8) {
 
             .Duplicate => {
                 try writer.print(" {} {}", .{try disassembler.readByte(ip), try disassembler.readByte(ip)});
+            },
+
+            .GetParam => {
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
+            },
+
+            .SetParam => {
+                try writer.print(" {}", .{try disassembler.readByte(ip)});
             },
 
             .GetLocal => {
@@ -127,8 +145,9 @@ pub const Instruction = enum(u8) {
     }
 };
 
-const EncodeError = error{
+const CodeError = error{
     TypeError,
+    RangeError,
 };
 
 pub const Encoder = struct {
@@ -168,11 +187,61 @@ pub const Encoder = struct {
                 i8, i16, i32, i64,
                 => self.pushInt(arg),
 
-                else => return EncodeError.TypeError,
+                else => return CodeError.TypeError,
             };
         }
     }
 };
+
+
+pub const Decoder = struct {
+    instrs: []const u8,
+    ip: u64,
+
+    pub fn init(instrs: []const u8, ip: u64) Decoder {
+        return Decoder {
+            .instrs = instrs,
+            .ip = ip,
+        };
+    }
+
+    pub fn readByte(self: *Decoder) !u8 {
+        if (self.instrs.len <= self.ip) {
+            return CodeError.RangeError;
+        }
+
+        const byte = self.instrs[self.ip];
+        self.ip += 1;
+        return byte;
+    }
+
+    pub fn readBytes(self: *Decoder, len: usize) ![]const u8 {
+        if (self.instrs.len < self.ip + len) {
+            return CodeError.RangeError;
+        }
+
+        const bytes = self.instrs[self.ip..self.ip + len];
+        self.ip += len;
+        return bytes;
+    }
+
+    pub fn read(self: *Decoder, comptime T: type) !T {
+        if (comptime std.meta.trait.hasFn("decode")(T)) {
+            return T.decode(self);
+        } else {
+            switch (T) {
+                bool => return (try self.read(u8)) == 1,
+
+                u8, u16, u32, u64,
+                i8, i16, i32, i64,
+                => return std.mem.readIntSliceLittle(T, try self.readBytes(@sizeOf(T))),
+
+                else => return CodeError.TypeError,
+            }
+        }
+    }
+};
+
 
 pub const Disassembler = struct {
     instrs: []const u8,
@@ -184,12 +253,20 @@ pub const Disassembler = struct {
     }
 
     pub fn readByte(self: *const Disassembler, ip: *u64) !u8 {
+        if (self.instrs.len <= ip.*) {
+            return CodeError.RangeError;
+        }
+
         var byte = self.instrs[ip.*];
         ip.* += 1;
         return byte;
     }
 
     pub fn readBytes(self: *const Disassembler, ip: *u64, len: usize) ![]const u8 {
+        if (self.instrs.len < ip.* + len) {
+            return CodeError.RangeError;
+        }
+
         var bytes = self.instrs[ip.*..ip.* + len];
         ip.* += len;
         return bytes;

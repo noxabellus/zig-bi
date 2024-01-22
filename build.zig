@@ -28,13 +28,24 @@ pub fn build(b: *Builder) !void {
             },
         });
 
+    const interpreter =
+        b.addModule("interpreter", .{
+            .source_file = .{ .path = "src/interpreter.zig" },
+            .dependencies = &.{
+                .{ .name = "instruction", .module = instruction },
+                .{ .name = "fiber", .module = fiber },
+                .{ .name = "value", .module = value },
+            },
+        });
+
     try value.dependencies.put("instruction", instruction);
 
     try fiber.dependencies.put("instruction", instruction);
     try fiber.dependencies.put("value", value);
 
-    exe.addModule("instruction", instruction);
     exe.addModule("fiber", fiber);
     exe.addModule("value", value);
+    exe.addModule("instruction", instruction);
+    exe.addModule("interpreter", interpreter);
     b.installArtifact(exe);
 }

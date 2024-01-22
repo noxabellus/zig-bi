@@ -1,6 +1,7 @@
 const std = @import("std");
 const fib = @import("fiber");
 const instr = @import("instruction");
+const Decoder = instr.Decoder;
 const Code = instr.Code;
 const Fiber = fib.Fiber;
 
@@ -210,6 +211,12 @@ pub const Value = enum(ValueRepr) {
 
     pub fn toNativeUnchecked(self: Self, comptime T: type) T {
         return Type.decode(T, @intFromEnum(self) & Self.DataMask);
+    }
+
+    pub fn decode(decoder: *Decoder) !Self {
+        const bits = try decoder.read(u64);
+        _ = try Tag.decode(bits);
+        return @enumFromInt(bits);
     }
 
     pub fn format(self: Self, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
